@@ -431,10 +431,12 @@ class Variable:
             self.constness = int(self.constness)
 
     def setId(self, IdMap):
-        self.nameToken = IdMap[self.nameTokenId]
+        if(self.nameTokenId != "0x0"):
+            self.nameToken = IdMap[self.nameTokenId]
         self.typeStartToken = IdMap[self.typeStartTokenId]
         self.typeEndToken = IdMap[self.typeEndTokenId]
-        self.scope = IdMap[self.scopeId]
+        if(self.scopeId != "0x0"):
+            self.scope = IdMap[self.scopeId]
 
 
 class ValueFlow:
