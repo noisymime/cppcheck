@@ -44,7 +44,7 @@ int CTU::maxCtuDepth = 2;
 
 std::string CTU::getFunctionId(const Tokenizer *tokenizer, const Function *function)
 {
-    return tokenizer->list.file(function->tokenDef) + ':' + MathLib::toString(function->tokenDef->linenr()) + ':' + MathLib::toString(function->tokenDef->col());
+    return tokenizer->list.file(function->tokenDef) + ':' + MathLib::toString(function->tokenDef->linenr()) + ':' + MathLib::toString(function->tokenDef->column());
 }
 
 CTU::FileInfo::Location::Location(const Tokenizer *tokenizer, const Token *tok)
@@ -369,9 +369,9 @@ CTU::FileInfo *CTU::getFileInfo(const Tokenizer *tokenizer)
                 if (argtok->values().size() != 1U)
                     continue;
                 const ValueFlow::Value &v = argtok->values().front();
-                if (v.valueType == ValueFlow::Value::UNINIT && !v.isInconclusive()) {
+                if (v.valueType == ValueFlow::Value::ValueType::UNINIT && !v.isInconclusive()) {
                     FileInfo::FunctionCall functionCall;
-                    functionCall.callValueType = ValueFlow::Value::UNINIT;
+                    functionCall.callValueType = ValueFlow::Value::ValueType::UNINIT;
                     functionCall.callId = getFunctionId(tokenizer, tok->astOperand1()->function());
                     functionCall.callFunctionName = tok->astOperand1()->expressionString();
                     functionCall.location.fileName = tokenizer->list.file(tok);
@@ -457,7 +457,7 @@ std::list<CTU::FileInfo::UnsafeUsage> CTU::getUnsafeUsage(const Tokenizer *token
 }
 
 static bool findPath(const std::string &callId,
-                     unsigned int callArgNr,
+                     nonneg int callArgNr,
                      MathLib::bigint unsafeValue,
                      CTU::FileInfo::InvalidValueType invalidValue,
                      const std::map<std::string, std::list<const CTU::FileInfo::CallBase *>> &callsMap,
@@ -482,15 +482,15 @@ static bool findPath(const std::string &callId,
                 continue;
             switch (invalidValue) {
             case CTU::FileInfo::InvalidValueType::null:
-                if (functionCall->callValueType != ValueFlow::Value::INT || functionCall->callArgValue != 0)
+                if (functionCall->callValueType != ValueFlow::Value::ValueType::INT || functionCall->callArgValue != 0)
                     continue;
                 break;
             case CTU::FileInfo::InvalidValueType::uninit:
-                if (functionCall->callValueType != ValueFlow::Value::UNINIT)
+                if (functionCall->callValueType != ValueFlow::Value::ValueType::UNINIT)
                     continue;
                 break;
             case CTU::FileInfo::InvalidValueType::bufferOverflow:
-                if (functionCall->callValueType != ValueFlow::Value::BUFFER_SIZE)
+                if (functionCall->callValueType != ValueFlow::Value::ValueType::BUFFER_SIZE)
                     continue;
                 if (unsafeValue < 0 || unsafeValue >= functionCall->callArgValue)
                     break;
@@ -522,7 +522,7 @@ std::list<ErrorLogger::ErrorMessage::FileLocation> CTU::FileInfo::getErrorPath(I
 {
     std::list<ErrorLogger::ErrorMessage::FileLocation> locationList;
 
-    const CTU::FileInfo::CallBase *path[10] = {0};
+    const CTU::FileInfo::CallBase *path[10] = {nullptr};
 
     if (!findPath(unsafeUsage.myId, unsafeUsage.myArgNr, unsafeUsage.value, invalidValue, callsMap, path, 0, warning))
         return locationList;

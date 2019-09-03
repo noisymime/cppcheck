@@ -106,6 +106,8 @@ private:
         TEST_CASE(findClosingBracket);
 
         TEST_CASE(expressionString);
+
+        TEST_CASE(hasKnownIntValue);
     }
 
     void nextprevious() const {
@@ -363,7 +365,7 @@ private:
 
 
     void deleteLast() const {
-        TokensFrontBack listEnds{ 0 };
+        TokensFrontBack listEnds{ nullptr };
         Token ** const tokensBack = &(listEnds.back);
         Token tok(&listEnds);
         tok.insertToken("aba");
@@ -373,7 +375,7 @@ private:
     }
 
     void deleteFirst() const {
-        TokensFrontBack listEnds{ 0 };
+        TokensFrontBack listEnds{ nullptr };
         Token ** const tokensFront = &(listEnds.front);
         Token tok(&listEnds);
 
@@ -390,7 +392,7 @@ private:
         ASSERT_EQUALS(true, Token::simpleMatch(example1.tokens()->tokAt(4)->nextArgument(), "3 , 4"));
 
         givenACodeSampleToTokenize example2("foo();");
-        ASSERT_EQUALS(true, example2.tokens()->tokAt(2)->nextArgument() == 0);
+        ASSERT_EQUALS(true, example2.tokens()->tokAt(2)->nextArgument() == nullptr);
 
         givenACodeSampleToTokenize example3("foo(bar(a, b), 2, 3);");
         ASSERT_EQUALS(true, Token::simpleMatch(example3.tokens()->tokAt(2)->nextArgument(), "2 , 3"));
@@ -402,7 +404,7 @@ private:
     void eraseTokens() const {
         givenACodeSampleToTokenize code("begin ; { this code will be removed } end", true);
         Token::eraseTokens(code.tokens()->next(), code.tokens()->tokAt(9));
-        ASSERT_EQUALS("begin ; end", code.tokens()->stringifyList(0, false));
+        ASSERT_EQUALS("begin ; end", code.tokens()->stringifyList(nullptr, false));
     }
 
 
@@ -502,7 +504,7 @@ private:
         givenACodeSampleToTokenize var("int a ; int b ;");
 
         // Varid == 0 should throw exception
-        ASSERT_THROW(Token::Match(var.tokens(), "%type% %varid% ; %type% %name%", 0),InternalError);
+        ASSERT_THROW((void)Token::Match(var.tokens(), "%type% %varid% ; %type% %name%", 0),InternalError);
 
         ASSERT_EQUALS(true, Token::Match(var.tokens(), "%type% %varid% ; %type% %name%", 1));
         ASSERT_EQUALS(true, Token::Match(var.tokens(), "%type% %name% ; %type% %varid%", 2));
@@ -988,6 +990,21 @@ private:
 
         givenACodeSampleToTokenize data4("return L\"a\";");
         ASSERT_EQUALS("returnL\"a\"", data4.tokens()->expressionString());
+    }
+
+    void hasKnownIntValue() {
+        // pointer might be NULL
+        ValueFlow::Value v1(0);
+
+        // pointer points at buffer that is 2 bytes
+        ValueFlow::Value v2(2);
+        v2.valueType = ValueFlow::Value::BUFFER_SIZE;
+        v2.setKnown();
+
+        Token token;
+        ASSERT_EQUALS(true, token.addValue(v1));
+        ASSERT_EQUALS(true, token.addValue(v2));
+        ASSERT_EQUALS(false, token.hasKnownIntValue());
     }
 };
 

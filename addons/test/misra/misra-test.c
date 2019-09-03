@@ -1,5 +1,5 @@
 // To test:
-// ~/cppcheck/cppcheck --dump misra-test.c && python ../misra.py -verify misra-test.c.dump
+// ~/cppcheck/cppcheck --dump misra-test.c && python ../../misra.py -verify misra-test.c.dump
 
 #include "path\file.h" // 20.2
 #include /*abc*/ "file.h" // no warning
@@ -25,7 +25,10 @@ typedef unsigned long long u64;
 extern int misra_5_1_extern_var_hides_var_x;
 extern int misra_5_1_extern_var_hides_var_y; //5.1
 int misra_5_1_var_hides_var________a;
-int misra_5_1_var_hides_var________b; //5.1
+int misra_5_1_var_hides_var________b; int misra_5_1_var_hides_var________b1; int misra_5_1_var_hides_var________b2; //5.1
+int misra_5_1_var_hides_var________c; //5.1
+int misra_5_1_var_hides_var________d; //5.1
+int misra_5_1_var_hides_var________e; //5.1
 
 extern const uint8_t misra_5_2_var1;
 const uint8_t        misra_5_2_var1 = 3; // no warning
@@ -101,6 +104,11 @@ void misra_5_3_enum_hidesfunction_31y(void) {} //5.3
 #define misra_5_4_macro_hides_macro__31y 2 //5.4
 #define m1(misra_5_4_param_hides_macro__31y) 1 //5.4
 #define m2(misra_5_4_param_hides_param__31x,misra_5_4_param_hides_param__31y) 1 //5.4
+#ifdef misra_5_4_macro_hides_macro__31x
+#define misra_5_4_macro 1 // no warning
+#else
+#define misra_5_4_macro 2 // no warning
+#endif
 
 #define misra_5_5_var_hides_macro____31x 1
 #define misra_5_5_functionhides_macro31x 1
@@ -150,6 +158,7 @@ enum misra_8_12_a { misra_a1 = 1, misra_a2 = 2, misra_a3, misra_a4 = 3 }; //8.12
 enum misra_8_12_b { misra_b1, misra_b2, misra_b3 = 3, misra_b4 = 3 }; // no-warning
 enum misra_8_12_c { misra_c1 = misra_a1, misra_c2 = 1 }; // no-warning
 enum misra_8_12_d { misra_d1 = 1, misra_d2 = 2, misra_d3 = misra_d1 }; // no-warning
+enum misra_8_12_e { misra_e1 = sizeof(int), misra_e2}; // no-crash
 
 void misra_8_14(char * restrict str) {} // 8.14
 
@@ -157,9 +166,10 @@ void misra_9_5() {
   int x[] = {[0]=23}; // 9.5
 }
 
-void misra_10_1() {
+void misra_10_1(uint8_t u) {
   int32_t i;
   i = 3 << 1; // 10.1
+  i = (u & u) << 4; // no-warning
 }
 
 void misra_10_4(u32 x, s32 y) {
@@ -221,8 +231,9 @@ void misra_11_7(int *p, float f) {
   y = ( int * ) f; //11.7
 }
 
+char * misra_11_8_const(const char *str) {  }
 char * misra_11_8(const char *str) {
-  (void)misra_11_8(str); // no-warning
+  (void)misra_11_8_const(str); // no-warning
   return (char *)str; // 11.8
 }
 
@@ -391,6 +402,9 @@ void misra_15_7() {
         var2 = 10u;
     }   // no-warning
   }
+
+  if (a==2) {} else if (b==4) {} // 15.7
+  if (a==2) {} else { if (b==4) {} } // no-warning
 }
 
 void misra_16_2() {
@@ -432,6 +446,23 @@ void misra_16_3() {
     case 12:
     default: break;
   }
+
+    switch (x) {
+    case 1:     // comment 1
+    {
+        a = 1;
+        break;
+    }
+    case 2:     // comment 2
+    {
+        a = 2;
+        break;
+    }
+    default:
+    {
+        break;
+    }
+    }
 }
 
 void misra_16_4() {
@@ -492,6 +523,33 @@ void misra_17_1() {
   va_copy(); // 17.1
 }
 
+void misra_17_2_ok_1(void) { ; }
+void misra_17_2_ok_2(void) {
+    misra_17_2_ok_1(); // no-warning
+}
+void misra_17_2_1(void) {
+  misra_17_2_ok_1(); // no-warning
+  misra_17_2_1(); // 17.2
+  misra_17_2_ok_2(); // no-warning
+  misra_17_2_1(); // 17.2
+}
+void misra_17_2_2(void) {
+  misra_17_2_3(); // 17.2
+}
+void misra_17_2_3(void) {
+  misra_17_2_4(); // 17.2
+}
+void misra_17_2_4(void) {
+  misra_17_2_2(); // 17.2
+  misra_17_2_3(); // 17.2
+}
+
+void misra_17_2_5(void) {
+  misra_17_2_ok_1(); // no-warning
+  misra_17_2_5(); // 17.2
+  misra_17_2_1(); // no-warning
+}
+
 void misra_17_6(int x[static 20]) {} // 17.6
 
 int calculation(int x) { return x + 1; }
@@ -503,9 +561,42 @@ void misra_17_8(int x) {
   x = 3; // 17.8
 }
 
+void misra_18_4()
+{
+  int b = 42;
+  int *bp = &b;
+  bp += 1; // 18.4
+  bp -= 2; // 18.4
+  int *p = bp - 2; // 18.4
+  int *ab = &b + 1; // 18.4
+  p = bp + p; // 18.4
+  bp = 1 + p + 1; // 18.4
+  b += 19; // no-warning
+  b = b + 9; // no-warning
+}
+
 void misra_18_5() {
   int *** p;  // 18.5
 }
+
+struct {
+  uint16_t len;
+  struct {
+    uint8_t data_1[]; // 18.7
+  } nested_1;
+  struct named {
+    struct {
+      uint8_t len_1;
+      uint32_t data_2[]; // 18.7
+    } nested_2;
+    uint8_t data_3[]; // 18.7
+  } nested_3;
+} _18_7_struct;
+struct {
+  uint16_t len;
+  uint8_t data_1[ 19 ];
+  uint8_t data_2[   ]; // 18.7
+} _18_7_struct;
 
 void misra_18_8(int x) {
   int buf1[10];

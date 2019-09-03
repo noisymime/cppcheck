@@ -193,7 +193,7 @@ private:
         if (simplify)
             tokenizer.simplifyTokenList2();
 
-        return tokenizer.tokens()->stringifyList(0, !simplify);
+        return tokenizer.tokens()->stringifyList(nullptr, !simplify);
     }
 
     std::string simplifyTypedef(const char code[]) {
@@ -206,7 +206,7 @@ private:
         tokenizer.createLinks();
         tokenizer.simplifyTypedef();
 
-        return tokenizer.tokens()->stringifyList(0, false);
+        return tokenizer.tokens()->stringifyList(nullptr, false);
     }
 
     void checkSimplifyTypedef(const char code[]) {
@@ -1150,7 +1150,10 @@ private:
                                 "}";
 
         ASSERT_EQUALS(expected, tok(code, false));
-        ASSERT_EQUALS_WITHOUT_LINENUMBERS("[test.cpp:28]: (debug) valueflow.cpp:3109:valueFlowFunctionReturn bailout: function return; nontrivial function body\n", errout.str());
+        ASSERT_EQUALS_WITHOUT_LINENUMBERS(
+            "[test.cpp:28]: (debug) valueflow.cpp:3109:valueFlowFunctionReturn bailout: function return; nontrivial function body\n"
+            "[test.cpp:26]: (debug) valueflow.cpp::valueFlowForward bailout: possible assignment of s by subfunction\n"
+            , errout.str());
     }
 
     void simplifyTypedef36() {
@@ -1657,7 +1660,7 @@ private:
                                 "( ( int ( * * ( * ) ( char * , char * , int , int ) ) ( ) ) global [ 6 ] ) ( \"assoc\" , \"eggdrop\" , 106 , 0 ) ; "
                                 "}";
         ASSERT_EQUALS(expected, tok(code));
-        ASSERT_EQUALS("", errout.str());
+        ASSERT_EQUALS_WITHOUT_LINENUMBERS("[test.cpp:3]: (debug) valueflow.cpp:1319:valueFlowTerminatingCondition bailout: Skipping function due to incomplete variable global\n", errout.str());
     }
 
     void simplifyTypedef68() { // ticket #2355
@@ -1864,7 +1867,7 @@ private:
                              "  B * b = new B;\n"
                              "  b->f = new A::F * [ 10 ];\n"
                              "}");
-        ASSERT_EQUALS("", errout.str());
+        ASSERT_EQUALS_WITHOUT_LINENUMBERS("[test.cpp:12]: (debug) valueflow.cpp:1319:valueFlowTerminatingCondition bailout: Skipping function due to incomplete variable idx\n", errout.str());
     }
 
     void simplifyTypedef83() { // ticket #2620

@@ -83,6 +83,7 @@ private:
 
         TEST_CASE(assignAddressOfLocalArrayToGlobalPointer);
         TEST_CASE(assignAddressOfLocalVariableToGlobalPointer);
+        TEST_CASE(assignAddressOfLocalVariableToMemberVariable);
 
         TEST_CASE(returnLocalVariable1);
         TEST_CASE(returnLocalVariable2);
@@ -126,6 +127,7 @@ private:
         TEST_CASE(danglingLifetimeInitList);
         TEST_CASE(danglingLifetimeImplicitConversion);
         TEST_CASE(invalidLifetime);
+        TEST_CASE(deadPointer);
     }
 
 
@@ -700,7 +702,7 @@ private:
               "  int x[10];\n"
               "  p = x;\n"
               "}");
-        ASSERT_EQUALS("[test.cpp:4]: (warning) Address of local array x is assigned to global pointer p and not reassigned before x goes out of scope.\n", errout.str());
+        ASSERT_EQUALS("[test.cpp:4] -> [test.cpp:3] -> [test.cpp:4]: (error) Non-local variable 'p' will use pointer to local variable 'x'.\n", errout.str());
 
         check("int *p;\n"
               "void f() {\n"
@@ -717,7 +719,7 @@ private:
               "  int x;\n"
               "  p = &x;\n"
               "}");
-        ASSERT_EQUALS("[test.cpp:4]: (warning) Address of local variable x is assigned to global pointer p and not reassigned before x goes out of scope.\n", errout.str());
+        ASSERT_EQUALS("[test.cpp:4] -> [test.cpp:3] -> [test.cpp:4]: (error) Non-local variable 'p' will use pointer to local variable 'x'.\n", errout.str());
 
         check("int *p;\n"
               "void f() {\n"
@@ -725,6 +727,27 @@ private:
               "  p = &x;\n"
               "  p = 0;\n"
               "}");
+        ASSERT_EQUALS("", errout.str());
+    }
+
+    void assignAddressOfLocalVariableToMemberVariable() {
+        check("struct A {\n"
+              "  void f() {\n"
+              "    int x;\n"
+              "    ptr = &x;\n"
+              "  }\n"
+              "  int *ptr;\n"
+              "};\n");
+        ASSERT_EQUALS("[test.cpp:4] -> [test.cpp:3] -> [test.cpp:4]: (error) Non-local variable 'ptr' will use pointer to local variable 'x'.\n", errout.str());
+
+        check("struct A {\n"
+              "  void f() {\n"
+              "    int x;\n"
+              "    ptr = &x;\n"
+              "    ptr = 0;\n"
+              "  }\n"
+              "  int *ptr;\n"
+              "};\n");
         ASSERT_EQUALS("", errout.str());
     }
 
@@ -1139,6 +1162,23 @@ private:
             "[test.cpp:1] -> [test.cpp:2] -> [test.cpp:6] -> [test.cpp:6] -> [test.cpp:5] -> [test.cpp:6]: (error) Returning pointer to local variable 'x' that will be invalid when returning.\n",
             errout.str());
 
+        check("int* f(int * x) {\n"
+              "    return x;\n"
+              "}\n"
+              "int * g(int x) {\n"
+              "    return f(&x);\n"
+              "}\n");
+        ASSERT_EQUALS("[test.cpp:5] -> [test.cpp:5] -> [test.cpp:4] -> [test.cpp:5]: (error) Returning pointer to local variable 'x' that will be invalid when returning.\n", errout.str());
+
+        check("int* f(int * x) {\n"
+              "    x = nullptr;\n"
+              "    return x;\n"
+              "}\n"
+              "int * g(int x) {\n"
+              "    return f(&x);\n"
+              "}\n");
+        ASSERT_EQUALS("", errout.str());
+
         check("int f(int& a) {\n"
               "    return a;\n"
               "}\n"
@@ -1438,14 +1478,13 @@ private:
               "}\n");
         ASSERT_EQUALS("[test.cpp:4] -> [test.cpp:3] -> [test.cpp:4]: (error) Returning lambda that captures local variable 'a' that will be invalid when returning.\n", errout.str());
 
-        // TODO: Variable is not set correctly for this case
         check("auto f(int b) {\n"
               "    return [=](int a){\n"
               "        a += b;\n"
               "        return [&](){ return a; };\n"
               "    };\n"
               "}\n");
-        TODO_ASSERT_EQUALS("[test.cpp:3] -> [test.cpp:4]: (error) Returning lambda that captures local variable 'a' that will be invalid when returning.\n", "", errout.str());
+        ASSERT_EQUALS("[test.cpp:4] -> [test.cpp:2] -> [test.cpp:4]: (error) Returning lambda that captures local variable 'a' that will be invalid when returning.\n", errout.str());
 
         check("auto g(int& a) {\n"
               "    return [&](){ return a; };\n"
@@ -1736,6 +1775,13 @@ private:
               "    return y.find(x);\n"
               "}\n");
         ASSERT_EQUALS("", errout.str());
+
+        check("std::string* f();\n"
+              "const char* g() {\n"
+              "    std::string* var = f();\n"
+              "    return var->c_str();\n"
+              "}\n");
+        ASSERT_EQUALS("", errout.str());
     }
 
     void danglingLifetime() {
@@ -1865,6 +1911,18 @@ private:
               "    for(int & x : v)\n"
               "        return &x;\n"
               "    return nullptr;\n"
+              "}\n");
+        ASSERT_EQUALS("", errout.str());
+
+        // #9275
+        check("struct S {\n"
+              "   void f();\n"
+              "   std::string m;\n"
+              "}\n"
+              "void S::f() {\n"
+              "    char buf[1024];\n"
+              "    const char* msg = buf;\n"
+              "    m = msg;\n"
               "}\n");
         ASSERT_EQUALS("", errout.str());
     }
@@ -2133,6 +2191,82 @@ private:
         check("int &a[];\n"
               "void b(){int *c = a};\n");
         ASSERT_EQUALS("", errout.str());
+    }
+
+    void deadPointer() {
+        check("void f() {\n"
+              "  int *p = p1;\n"
+              "  if (cond) {\n"
+              "    int x;\n"
+              "    p = &x;\n"
+              "  }\n"
+              "  *p = 0;\n"
+              "}");
+        ASSERT_EQUALS("[test.cpp:5] -> [test.cpp:4] -> [test.cpp:7]: (error) Using pointer to local variable 'x' that is out of scope.\n", errout.str());
+
+        // FP: don't warn in subfunction
+        check("void f(struct KEY *key) {\n"
+              "  key->x = 0;\n"
+              "}\n"
+              "\n"
+              "int main() {\n"
+              "  struct KEY *tmp = 0;\n"
+              "  struct KEY k;\n"
+              "\n"
+              "  if (condition) {\n"
+              "    tmp = &k;\n"
+              "  } else {\n"
+              "  }\n"
+              "  f(tmp);\n"
+              "}");
+        ASSERT_EQUALS("", errout.str());
+
+        // Don't warn about references (#6399)
+        check("void f() {\n"
+              "    wxAuiToolBarItem* former_hover = NULL;\n"
+              "    for (i = 0, count = m_items.GetCount(); i < count; ++i) {\n"
+              "        wxAuiToolBarItem& item = m_items.Item(i);\n"
+              "        former_hover = &item;\n"
+              "    }\n"
+              "    if (former_hover != pitem)\n"
+              "        dosth();\n"
+              "}");
+        ASSERT_EQUALS("", errout.str());
+
+        check("void f() {\n"
+              "    wxAuiToolBarItem* former_hover = NULL;\n"
+              "    for (i = 0, count = m_items.GetCount(); i < count; ++i) {\n"
+              "        wxAuiToolBarItem item = m_items.Item(i);\n"
+              "        former_hover = &item;\n"
+              "    }\n"
+              "    if (former_hover != pitem)\n"
+              "        dosth();\n"
+              "}");
+        ASSERT_EQUALS("[test.cpp:5] -> [test.cpp:4] -> [test.cpp:7]: (error) Using pointer to local variable 'item' that is out of scope.\n", errout.str());
+
+        // #6575
+        check("void trp_deliver_signal()  {\n"
+              "    union {\n"
+              "        Uint32 theData[25];\n"
+              "        EventReport repData;\n"
+              "    };\n"
+              "    EventReport * rep = &repData;\n"
+              "    rep->setEventType(NDB_LE_Connected);\n"
+              "}");
+        ASSERT_EQUALS("", errout.str());
+
+        // #8785
+        check("int f(bool a, bool b) {\n"
+              "    int *iPtr = 0;\n"
+              "    if(b) {\n"
+              "        int x = 42;\n"
+              "        iPtr = &x;\n"
+              "    }\n"
+              "    if(b && a)\n"
+              "        return *iPtr;\n"
+              "    return 0;\n"
+              "}\n");
+        ASSERT_EQUALS("[test.cpp:5] -> [test.cpp:4] -> [test.cpp:8]: (error) Using pointer to local variable 'x' that is out of scope.\n", errout.str());
     }
 
 };

@@ -27,9 +27,11 @@
 #include <vector>
 
 #include "errorlogger.h"
+#include "utils.h"
 
 class Library;
 class Settings;
+class Scope;
 class Token;
 class Variable;
 
@@ -45,6 +47,12 @@ enum class ChildrenToVisit {
  * Visit AST nodes recursively. The order is not "well defined"
  */
 void visitAstNodes(const Token *ast, std::function<ChildrenToVisit(const Token *)> visitor);
+
+std::vector<const Token*> astFlatten(const Token* tok, const char* op);
+
+bool astHasToken(const Token* root, const Token * tok);
+
+bool astHasVar(const Token * tok, nonneg int varid);
 
 /** Is expression a 'signed char' if no promotion is used */
 bool astIsSignedChar(const Token *tok);
@@ -79,6 +87,9 @@ const Token * astIsVariableComparison(const Token *tok, const std::string &comp,
 
 const Token * nextAfterAstRightmostLeaf(const Token * tok);
 
+Token* astParentSkipParens(Token* tok);
+const Token* astParentSkipParens(const Token* tok);
+
 bool precedes(const Token * tok1, const Token * tok2);
 
 bool isSameExpression(bool cpp, bool macro, const Token *tok1, const Token *tok2, const Library& library, bool pure, bool followVar, ErrorPath* errors=nullptr);
@@ -94,7 +105,7 @@ bool isDifferentKnownValues(const Token * const tok1, const Token * const tok2);
  * @param cond1  condition1
  * @param cond2  condition2
  * @param library files data
- * @param pure
+ * @param pure boolean
  */
 bool isOppositeCond(bool isNot, bool cpp, const Token * const cond1, const Token * const cond2, const Library& library, bool pure, bool followVar, ErrorPath* errors=nullptr);
 
@@ -107,7 +118,7 @@ bool isWithoutSideEffects(bool cpp, const Token* tok);
 bool isUniqueExpression(const Token* tok);
 
 /** Is scope a return scope (scope will unconditionally return) */
-bool isReturnScope(const Token *endToken);
+bool isReturnScope(const Token *endToken, const Settings * settings = nullptr, bool functionScope=false);
 
 /** Is variable changed by function call?
  * In case the answer of the question is inconclusive, e.g. because the function declaration is not known
@@ -118,7 +129,7 @@ bool isReturnScope(const Token *endToken);
  * @param settings      program settings
  * @param inconclusive  pointer to output variable which indicates that the answer of the question is inconclusive
  */
-bool isVariableChangedByFunctionCall(const Token *tok, unsigned int varid, const Settings *settings, bool *inconclusive);
+bool isVariableChangedByFunctionCall(const Token *tok, int indirect, nonneg int varid, const Settings *settings, bool *inconclusive);
 
 /** Is variable changed by function call?
  * In case the answer of the question is inconclusive, e.g. because the function declaration is not known
@@ -128,12 +139,19 @@ bool isVariableChangedByFunctionCall(const Token *tok, unsigned int varid, const
  * @param settings      program settings
  * @param inconclusive pointer to output variable which indicates that the answer of the question is inconclusive
  */
-bool isVariableChangedByFunctionCall(const Token *tok, const Settings *settings, bool *inconclusive);
+bool isVariableChangedByFunctionCall(const Token *tok, int indirect, const Settings *settings, bool *inconclusive);
 
 /** Is variable changed in block of code? */
-bool isVariableChanged(const Token *start, const Token *end, const unsigned int varid, bool globalvar, const Settings *settings, bool cpp);
+bool isVariableChanged(const Token *start, const Token *end, const nonneg int varid, bool globalvar, const Settings *settings, bool cpp, int depth = 20);
 
-bool isVariableChanged(const Variable * var, const Settings *settings, bool cpp);
+bool isVariableChanged(const Token *tok, int indirect, const Settings *settings, bool cpp, int depth = 20);
+
+bool isVariableChanged(const Variable * var, const Settings *settings, bool cpp, int depth = 20);
+
+const Token* findVariableChanged(const Token *start, const Token *end, int indirect, const nonneg int varid, bool globalvar, const Settings *settings, bool cpp, int depth = 20);
+Token* findVariableChanged(Token *start, const Token *end, int indirect, const nonneg int varid, bool globalvar, const Settings *settings, bool cpp, int depth = 20);
+
+bool isAliased(const Variable *var);
 
 /** Determines the number of arguments - if token is a function call or macro
  * @param start token which is supposed to be the function/macro name.
@@ -155,6 +173,8 @@ const Token *findLambdaStartToken(const Token *last);
  */
 const Token *findLambdaEndToken(const Token *first);
 
+bool isLikelyStream(bool cpp, const Token *stream);
+
 /**
  * do we see a likely write of rhs through overloaded operator
  *   s >> x;
@@ -165,6 +185,64 @@ bool isLikelyStreamRead(bool cpp, const Token *op);
 bool isCPPCast(const Token* tok);
 
 bool isConstVarExpression(const Token *tok);
+
+const Variable *getLHSVariable(const Token *tok);
+
+struct PathAnalysis {
+    enum class Progress {
+        Continue,
+        Break
+    };
+    PathAnalysis(const Token* start, const Library& library)
+        : start(start), library(&library)
+    {}
+    const Token * start;
+    const Library * library;
+
+    struct Info {
+        const Token* tok;
+        ErrorPath errorPath;
+        bool known;
+    };
+
+    void forward(const std::function<Progress(const Info&)>& f) const;
+    template<class F>
+    void forwardAll(F f) {
+        forward([&](const Info& info) {
+            f(info);
+            return Progress::Continue;
+        });
+    }
+    template<class Predicate>
+    Info forwardFind(Predicate pred) {
+        Info result{};
+        forward([&](const Info& info) {
+            if (pred(info)) {
+                result = info;
+                return Progress::Break;
+            }
+            return Progress::Continue;
+        });
+        return result;
+    }
+private:
+
+    Progress forwardRecursive(const Token* tok, Info info, const std::function<PathAnalysis::Progress(const Info&)>& f) const;
+    Progress forwardRange(const Token* startToken, const Token* endToken, Info info, const std::function<Progress(const Info&)>& f) const;
+
+    static const Scope* findOuterScope(const Scope * scope);
+
+    static std::pair<bool, bool> checkCond(const Token * tok, bool& known);
+};
+
+/**
+ * @brief Returns true if there is a path between the two tokens
+ *
+ * @param start Starting point of the path
+ * @param dest The path destination
+ * @param errorPath Adds the path traversal to the errorPath
+ */
+bool reaches(const Token * start, const Token * dest, const Library& library, ErrorPath* errorPath);
 
 /**
  * Forward data flow analysis for checks
@@ -206,10 +284,10 @@ public:
     /** Is there some possible alias for given expression */
     bool possiblyAliased(const Token *expr, const Token *startToken) const;
 
-    bool isEscapedAlias(const Token* expr);
-
     static bool isNullOperand(const Token *expr);
 private:
+    static bool isEscapedAlias(const Token* expr);
+
     /** Result of forward analysis */
     struct Result {
         enum class Type { NONE, READ, WRITE, BREAK, RETURN, BAILOUT } type;
@@ -219,7 +297,7 @@ private:
     };
 
     struct Result check(const Token *expr, const Token *startToken, const Token *endToken);
-    struct Result checkRecursive(const Token *expr, const Token *startToken, const Token *endToken, const std::set<unsigned int> &exprVarIds, bool local);
+    struct Result checkRecursive(const Token *expr, const Token *startToken, const Token *endToken, const std::set<int> &exprVarIds, bool local, bool inInnerClass);
 
     // Is expression a l-value global data?
     bool isGlobalData(const Token *expr) const;

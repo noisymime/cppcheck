@@ -1,6 +1,6 @@
 /*
  * Cppcheck - A tool for static C/C++ code analysis
- * Copyright (C) 2007-2018 Cppcheck team.
+ * Copyright (C) 2007-2019 Cppcheck team.
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -436,12 +436,12 @@ void CheckString::sprintfOverlappingData()
             const int formatString = Token::simpleMatch(tok, "sprintf") ? 1 : 2;
             for (unsigned int argnr = formatString + 1; argnr < args.size(); ++argnr) {
                 const Token *dest = args[0];
-                if (dest->isCast())
+                while (dest->isCast())
                     dest = dest->astOperand2() ? dest->astOperand2() : dest->astOperand1();
                 const Token *arg = args[argnr];
                 if (!arg->valueType() || arg->valueType()->pointer != 1)
                     continue;
-                if (arg->isCast())
+                while (arg->isCast())
                     arg = arg->astOperand2() ? arg->astOperand2() : arg->astOperand1();
 
                 const bool same = isSameExpression(mTokenizer->isCPP(),
@@ -452,7 +452,7 @@ void CheckString::sprintfOverlappingData()
                                                    true,
                                                    false);
                 if (same) {
-                    sprintfOverlappingDataError(tok, args[argnr], args[argnr]->expressionString());
+                    sprintfOverlappingDataError(tok, args[argnr], arg->expressionString());
                 }
             }
         }

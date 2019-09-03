@@ -139,7 +139,7 @@ void nullPointer(char *p, int fd, pthread_mutex_t mutex)
     // cppcheck-suppress nullPointer
     pthread_mutex_lock(NULL);
     // cppcheck-suppress nullPointer
-    pthread_mutex_trylock(NULL);
+    (void)pthread_mutex_trylock(NULL);
     // cppcheck-suppress nullPointer
     pthread_mutex_unlock(NULL);
 }
@@ -344,13 +344,13 @@ void uninitvar(int fd)
     // cppcheck-suppress uninitvar
     pthread_mutex_lock(&mutex1);
     // cppcheck-suppress uninitvar
-    pthread_mutex_trylock(&mutex2);
+    (void)pthread_mutex_trylock(&mutex2);
     // cppcheck-suppress uninitvar
     pthread_mutex_unlock(&mutex3);
     // after initialization it must be OK to call lock, trylock and unlock for this mutex
     pthread_mutex_init(&mutex, NULL);
     pthread_mutex_lock(&mutex);
-    pthread_mutex_trylock(&mutex);
+    (void)pthread_mutex_trylock(&mutex);
     pthread_mutex_unlock(&mutex);
 }
 
@@ -400,9 +400,9 @@ void timet_h(struct timespec* ptp1)
 
 void dl(const char* libname, const char* func)
 {
+    // cppcheck-suppress redundantInitialization
     void* lib = dlopen(libname, RTLD_NOW);
     // cppcheck-suppress resourceLeak
-    // cppcheck-suppress redundantAssignment
     lib = dlopen(libname, RTLD_LAZY);
     const char* funcname;
     // cppcheck-suppress uninitvar

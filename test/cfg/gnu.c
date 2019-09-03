@@ -15,6 +15,12 @@
 #include <sys/epoll.h>
 #endif
 
+// Declaration necessary because there is no specific / portable header.
+extern void *xcalloc(size_t nmemb, size_t size);
+extern void *xmalloc(size_t size);
+extern void *xrealloc(void *block, size_t newsize);
+extern void xfree(void *ptr);
+
 void resourceLeak_mkostemps(char *template, int suffixlen, int flags)
 {
     // cppcheck-suppress unreadVariable
@@ -71,15 +77,35 @@ int no_resourceLeak_mkostemp_02(char *template, int flags)
 
 void valid_code(int argInt1)
 {
+    char *p;
+
     if (__builtin_expect(argInt1, 0)) {}
     if (__builtin_expect_with_probability(argInt1 + 1, 2, 0.5)) {}
+
+    p = (char *)malloc(10);
+    free(p);
+    p = (char *)malloc(5);
+    xfree(p);
+    p = (char *)xmalloc(10);
+    free(p);
+    p = (char *)xmalloc(5);
+    xfree(p);
+
+    // cppcheck-suppress allocaCalled
+    p = __builtin_alloca(5);
+    p[0] = 1;
+    // TODO cppcheck-suppress arrayIndexOutOfBounds
+    p[5] = 1;
+    __builtin_prefetch(p, 0, 1);
+
+    if (__builtin_types_compatible_p(int, char)) {}
 }
 
 void ignoreleak(void)
 {
     char *p = (char *)malloc(10);
     __builtin_memset(&(p[0]), 0, 10);
-    // TODO // cppcheck-suppress memleak
+    // cppcheck-suppress memleak
 }
 
 void memleak_asprintf(char **ptr, const char *fmt, const int arg)
@@ -91,6 +117,13 @@ void memleak_asprintf(char **ptr, const char *fmt, const int arg)
     if (-1 != asprintf(ptr,fmt,arg)) {
         // TODO: Related to #8980 cppcheck-suppress memleak
     }
+}
+
+void memleak_xmalloc()
+{
+    char *p = (char*)xmalloc(10);
+    p[9] = 0;
+    // cppcheck-suppress memleak
 }
 
 void uninitvar__builtin_memset(void)
@@ -117,13 +150,23 @@ void bufferAccessOutOfBounds()
     // cppcheck-suppress bufferAccessOutOfBounds
     sethostname(buf, 4);
 
-    // Declaration necessary because there is no specific / portable header containing xcalloc.
-    extern void *xcalloc(size_t nmemb, size_t size);
     char * pAlloc1 = xcalloc(2, 4);
     memset(pAlloc1, 0, 8);
     // cppcheck-suppress bufferAccessOutOfBounds
     memset(pAlloc1, 0, 9);
     free(pAlloc1);
+
+    char * pAlloc2 = xmalloc(4);
+    memset(pAlloc2, 0, 4);
+    // cppcheck-suppress bufferAccessOutOfBounds
+    memset(pAlloc2, 0, 5);
+
+    pAlloc2 = xrealloc(pAlloc2, 10);
+    memset(pAlloc2, 0, 10);
+    // cppcheck-suppress bufferAccessOutOfBounds
+    memset(pAlloc2, 0, 11);
+
+    free(pAlloc2);
 }
 
 void leakReturnValNotUsed()

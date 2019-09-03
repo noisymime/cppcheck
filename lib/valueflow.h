@@ -22,6 +22,7 @@
 //---------------------------------------------------------------------------
 
 #include "config.h"
+#include "utils.h"
 
 #include <list>
 #include <string>
@@ -41,18 +42,20 @@ namespace ValueFlow {
         typedef std::list<ErrorPathItem> ErrorPath;
 
         explicit Value(long long val = 0)
-            : valueType(INT),
+            : valueType(ValueType::INT),
               intvalue(val),
               tokvalue(nullptr),
               floatValue(0.0),
-              moveKind(NonMovedVariable),
+              moveKind(MoveKind::NonMovedVariable),
               varvalue(val),
               condition(nullptr),
               varId(0U),
+              safe(false),
               conditional(false),
               defaultArg(false),
-              lifetimeKind(Object),
-              lifetimeScope(Local),
+              indirect(0),
+              lifetimeKind(LifetimeKind::Object),
+              lifetimeScope(LifetimeScope::Local),
               valueKind(ValueKind::Possible)
         {}
         Value(const Token *c, long long val);
@@ -61,43 +64,44 @@ namespace ValueFlow {
             if (valueType != rhs.valueType)
                 return false;
             switch (valueType) {
-            case INT:
+            case ValueType::INT:
                 if (intvalue != rhs.intvalue)
                     return false;
                 break;
-            case TOK:
+            case ValueType::TOK:
                 if (tokvalue != rhs.tokvalue)
                     return false;
                 break;
-            case FLOAT:
+            case ValueType::FLOAT:
                 // TODO: Write some better comparison
                 if (floatValue > rhs.floatValue || floatValue < rhs.floatValue)
                     return false;
                 break;
-            case MOVED:
+            case ValueType::MOVED:
                 if (moveKind != rhs.moveKind)
                     return false;
                 break;
-            case UNINIT:
+            case ValueType::UNINIT:
                 break;
-            case BUFFER_SIZE:
+            case ValueType::BUFFER_SIZE:
                 if (intvalue != rhs.intvalue)
                     return false;
                 break;
-            case CONTAINER_SIZE:
+            case ValueType::CONTAINER_SIZE:
                 if (intvalue != rhs.intvalue)
                     return false;
                 break;
-            case LIFETIME:
+            case ValueType::LIFETIME:
                 if (tokvalue != rhs.tokvalue)
                     return false;
-            };
+            }
 
             return varvalue == rhs.varvalue &&
                    condition == rhs.condition &&
                    varId == rhs.varId &&
                    conditional == rhs.conditional &&
                    defaultArg == rhs.defaultArg &&
+                   indirect == rhs.indirect &&
                    valueKind == rhs.valueKind;
         }
 
@@ -105,36 +109,40 @@ namespace ValueFlow {
 
         enum ValueType { INT, TOK, FLOAT, MOVED, UNINIT, CONTAINER_SIZE, LIFETIME, BUFFER_SIZE } valueType;
         bool isIntValue() const {
-            return valueType == INT;
+            return valueType == ValueType::INT;
         }
         bool isTokValue() const {
-            return valueType == TOK;
+            return valueType == ValueType::TOK;
         }
         bool isFloatValue() const {
-            return valueType == FLOAT;
+            return valueType == ValueType::FLOAT;
         }
         bool isMovedValue() const {
-            return valueType == MOVED;
+            return valueType == ValueType::MOVED;
         }
         bool isUninitValue() const {
-            return valueType == UNINIT;
+            return valueType == ValueType::UNINIT;
         }
         bool isContainerSizeValue() const {
-            return valueType == CONTAINER_SIZE;
+            return valueType == ValueType::CONTAINER_SIZE;
         }
         bool isLifetimeValue() const {
-            return valueType == LIFETIME;
+            return valueType == ValueType::LIFETIME;
         }
         bool isBufferSizeValue() const {
-            return valueType == BUFFER_SIZE;
+            return valueType == ValueType::BUFFER_SIZE;
         }
 
         bool isLocalLifetimeValue() const {
-            return valueType == LIFETIME && lifetimeScope == Local;
+            return valueType == ValueType::LIFETIME && lifetimeScope == LifetimeScope::Local;
         }
 
         bool isArgumentLifetimeValue() const {
-            return valueType == LIFETIME && lifetimeScope == Argument;
+            return valueType == ValueType::LIFETIME && lifetimeScope == LifetimeScope::Argument;
+        }
+
+        bool isNonValue() const {
+            return isMovedValue() || isUninitValue() || isLifetimeValue();
         }
 
         /** int value */
@@ -147,7 +155,7 @@ namespace ValueFlow {
         double floatValue;
 
         /** kind of moved  */
-        enum MoveKind {NonMovedVariable, MovedVariable, ForwardedVariable} moveKind;
+        enum class MoveKind {NonMovedVariable, MovedVariable, ForwardedVariable} moveKind;
 
         /** For calculated values - variable value that calculated value depends on */
         long long varvalue;
@@ -158,7 +166,10 @@ namespace ValueFlow {
         ErrorPath errorPath;
 
         /** For calculated values - varId that calculated value depends on */
-        unsigned int varId;
+        nonneg int varId;
+
+        /** value relies on safe checking */
+        bool safe;
 
         /** Conditional value */
         bool conditional;
@@ -166,17 +177,19 @@ namespace ValueFlow {
         /** Is this value passed as default parameter to the function? */
         bool defaultArg;
 
-        enum LifetimeKind {Object, Lambda, Iterator, Address} lifetimeKind;
+        int indirect;
 
-        enum LifetimeScope { Local, Argument } lifetimeScope;
+        enum class LifetimeKind {Object, Lambda, Iterator, Address} lifetimeKind;
+
+        enum class LifetimeScope { Local, Argument } lifetimeScope;
 
         static const char * toString(MoveKind moveKind) {
             switch (moveKind) {
-            case NonMovedVariable:
+            case MoveKind::NonMovedVariable:
                 return "NonMovedVariable";
-            case MovedVariable:
+            case MoveKind::MovedVariable:
                 return "MovedVariable";
-            case ForwardedVariable:
+            case MoveKind::ForwardedVariable:
                 return "ForwardedVariable";
             }
             return "";
@@ -236,11 +249,13 @@ namespace ValueFlow {
     std::string eitherTheConditionIsRedundant(const Token *condition);
 }
 
-const Variable *getLifetimeVariable(const Token *tok, ValueFlow::Value::ErrorPath &errorPath);
+const Variable* getLifetimeVariable(const Token* tok, ValueFlow::Value::ErrorPath& errorPath, bool* addressOf = nullptr);
 
 bool isLifetimeBorrowed(const Token *tok, const Settings *settings);
 
 std::string lifetimeType(const Token *tok, const ValueFlow::Value *val);
+
+std::string lifetimeMessage(const Token *tok, const ValueFlow::Value *val, ValueFlow::Value::ErrorPath &errorPath);
 
 ValueFlow::Value getLifetimeObjValue(const Token *tok);
 

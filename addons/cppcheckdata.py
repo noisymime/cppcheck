@@ -34,7 +34,7 @@ class Directive:
     str = None
     file = None
     linenr = None
-    col = 0
+    column = 0
 
     def __init__(self, element):
         self.str = element.get('str')
@@ -88,7 +88,6 @@ class ValueType:
         return self.typeScope and self.typeScope.type == "Enum"
 
 
-
 class Token:
     """
     Token class. Contains information about each token in the source code.
@@ -119,6 +118,7 @@ class Token:
         isLogicalOp        Is this token a logical operator: && ||
         isUnsigned         Is this token a unsigned type
         isSigned           Is this token a signed type
+        isExpandedMacro    Is this token a expanded macro token
         varId              varId for token, each variable has a unique non-zero id
         variable           Variable information for this token. See the Variable class.
         function           If this token points at a function call, this attribute has the Function
@@ -131,7 +131,7 @@ class Token:
         astOperand2        ast operand2
         file               file name
         linenr             line number
-        col                column
+        column             column
 
     To iterate through all tokens use such code:
     @code
@@ -166,6 +166,7 @@ class Token:
     isLogicalOp = False
     isUnsigned = False
     isSigned = False
+    isExpandedMacro = False
     varId = None
     variableId = None
     variable = None
@@ -187,7 +188,7 @@ class Token:
 
     file = None
     linenr = None
-    col = None
+    column = None
 
     def __init__(self, element):
         self.Id = element.get('id')
@@ -224,6 +225,8 @@ class Token:
                 self.isComparisonOp = True
             elif element.get('isLogicalOp'):
                 self.isLogicalOp = True
+        if element.get('isExpandedMacro'):
+            self.isExpandedMacro = True
         self.linkId = element.get('link')
         self.link = None
         if element.get('varId'):
@@ -248,7 +251,7 @@ class Token:
         self.astOperand2 = None
         self.file = element.get('file')
         self.linenr = int(element.get('linenr'))
-        self.col = int(element.get('col'))
+        self.column = int(element.get('column'))
 
     def setId(self, IdMap):
         self.scope = IdMap[self.scopeId]
@@ -288,6 +291,8 @@ class Scope:
         className      Name of this scope.
                        For a function scope, this is the function name;
                        For a class scope, this is the class name.
+        function       If this scope belongs at a function call, this attribute
+                       has the Function information. See the Function class.
         type           Type of scope: Global, Function, Class, If, While
     """
 
@@ -297,6 +302,8 @@ class Scope:
     bodyEndId = None
     bodyEnd = None
     className = None
+    functionId = None
+    function = None
     nestedInId = None
     nestedIn = None
     type = None
@@ -305,6 +312,8 @@ class Scope:
     def __init__(self, element):
         self.Id = element.get('id')
         self.className = element.get('className')
+        self.functionId = element.get('function')
+        self.function = None
         self.bodyStartId = element.get('bodyStart')
         self.bodyStart = None
         self.bodyEndId = element.get('bodyEnd')
@@ -318,6 +327,7 @@ class Scope:
         self.bodyStart = IdMap[self.bodyStartId]
         self.bodyEnd = IdMap[self.bodyEndId]
         self.nestedIn = IdMap[self.nestedInId]
+        self.function = IdMap[self.functionId]
 
 
 class Function:
@@ -325,6 +335,12 @@ class Function:
     Information about a function
     C++ class:
     http://cppcheck.net/devinfo/doxyoutput/classFunction.html
+
+    Attributes
+        argument                Argument list
+        tokenDef                Token in function definition
+        isVirtual               Is this function is virtual
+        isImplicitlyVirtual     Is this function is virtual this in the base classes
     """
 
     Id = None
@@ -493,11 +509,11 @@ class ValueFlow:
             if self.condition:
                 self.condition = int(self.condition)
             if element.get('known'):
-                valueKind = 'known'
+                self.valueKind = 'known'
             elif element.get('possible'):
-                valueKind = 'possible'
+                self.valueKind = 'possible'
             if element.get('inconclusive'):
-                inconclusive = 'known'
+                self.inconclusive = True
 
     def __init__(self, element):
         self.Id = element.get('id')
@@ -854,7 +870,7 @@ def reportError(location, severity, message, addon, errorId, extra=''):
     if '--cli' in sys.argv:
         msg = { 'file': location.file,
                 'linenr': location.linenr,
-                'col': location.col,
+                'column': location.column,
                 'severity': severity,
                 'message': message,
                 'addon': addon,

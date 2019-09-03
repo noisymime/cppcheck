@@ -459,6 +459,7 @@ private:
         TEST_CASE(checkEnableIf);
         TEST_CASE(checkTemplates);
         TEST_CASE(checkNamespaces);
+        TEST_CASE(checkLambdas);
 
         // #9052
         TEST_CASE(noCrash1);
@@ -468,6 +469,8 @@ private:
         TEST_CASE(checkConfiguration);
 
         TEST_CASE(unknownType); // #8952
+
+        TEST_CASE(unknownMacroBeforeReturn);
     }
 
     std::string tokenizeAndStringify(const char code[], bool simplify = false, bool expand = true, Settings::PlatformType platform = Settings::Native, const char* filename = "test.cpp", bool cpp11 = true) {
@@ -495,7 +498,7 @@ private:
         }
 
         if (tokenizer.tokens())
-            return tokenizer.tokens()->stringifyList(false, expand, false, true, false, 0, 0);
+            return tokenizer.tokens()->stringifyList(false, expand, false, true, false, nullptr, nullptr);
         else
             return "";
     }
@@ -525,7 +528,7 @@ private:
         }
 
         if (tokenizer.tokens())
-            return tokenizer.tokens()->stringifyList(false, expand, false, true, false, 0, 0);
+            return tokenizer.tokens()->stringifyList(false, expand, false, true, false, nullptr, nullptr);
         else
             return "";
     }
@@ -539,7 +542,7 @@ private:
         tokenizer.tokenize(istr, "test.cpp");
         if (!tokenizer.tokens())
             return "";
-        return tokenizer.tokens()->stringifyList(false, true, false, true, false, 0, 0);
+        return tokenizer.tokens()->stringifyList(false, true, false, true, false, nullptr, nullptr);
     }
 
     std::string tokenizeDebugListing(const char code[], bool simplify = false, const char filename[] = "test.cpp") {
@@ -1499,7 +1502,7 @@ private:
 
         tokenizer.simplifyKnownVariables();
 
-        return tokenizer.tokens()->stringifyList(0, false);
+        return tokenizer.tokens()->stringifyList(nullptr, false);
     }
 
     void simplifyKnownVariables1() {
@@ -3642,6 +3645,10 @@ private:
         const char code4[] = "const void * const p = NULL;";
         const char res4[]  = "const void * const p ; p = NULL ;";
         ASSERT_EQUALS(res4, tokenizeAndStringify(code4));
+
+        const char code5[] = "const void * volatile p = NULL;";
+        const char res5[]  = "const void * volatile p ; p = NULL ;";
+        ASSERT_EQUALS(res5, tokenizeAndStringify(code5));;
     }
 
     void vardecl5() {
@@ -4481,8 +4488,8 @@ private:
             ASSERT_EQUALS(true, tok->tokAt(14) == tok->linkAt(16));
 
             // a<b && b>f
-            ASSERT_EQUALS(true, 0 == tok->linkAt(28));
-            ASSERT_EQUALS(true, 0 == tok->linkAt(32));
+            ASSERT_EQUALS(true, nullptr == tok->linkAt(28));
+            ASSERT_EQUALS(true, nullptr == tok->linkAt(32));
 
             ASSERT_EQUALS("", errout.str());
         }
@@ -5141,7 +5148,7 @@ private:
         tokenizer.tokenize(istr, "test.cpp");
 
         // Expected result..
-        ASSERT_EQUALS(expected, tokenizer.tokens()->stringifyList(0, false));
+        ASSERT_EQUALS(expected, tokenizer.tokens()->stringifyList(nullptr, false));
 
         const Token * func1 = Token::findsimplematch(tokenizer.tokens(), "func1");
         const Token * func2 = Token::findsimplematch(tokenizer.tokens(), "func2");
@@ -5172,7 +5179,7 @@ private:
         tokenizer.tokenize(istr, "test.cpp");
 
         // Expected result..
-        ASSERT_EQUALS(expected, tokenizer.tokens()->stringifyList(0, false));
+        ASSERT_EQUALS(expected, tokenizer.tokens()->stringifyList(nullptr, false));
 
         const Token * func1 = Token::findsimplematch(tokenizer.tokens(), "func1");
         const Token * func2 = Token::findsimplematch(tokenizer.tokens(), "func2");
@@ -7113,6 +7120,8 @@ private:
 
         ASSERT_EQUALS("void f ( ) { switch ( x ) { case 'a' : case 'b' : case 'c' : ; } }", tokenizeAndStringify("void f() { switch(x) { case 'a' ... 'c': } }"));
         ASSERT_EQUALS("void f ( ) { switch ( x ) { case 'c' . . . 'a' : ; } }", tokenizeAndStringify("void f() { switch(x) { case 'c' ... 'a': } }"));
+
+        ASSERT_EQUALS("void f ( ) { switch ( x ) { case '[' : case '\\\\' : case ']' : ; } }", tokenizeAndStringify("void f() { switch(x) { case '[' ... ']': } }"));
     }
 
     void prepareTernaryOpForAST() {
@@ -7689,6 +7698,9 @@ private:
 
         // after (expr)
         ASSERT_NO_THROW(tokenizeAndStringify("void f() { switch (a) int b; }"));
+
+        ASSERT_NO_THROW(tokenizeAndStringify("S s = { .x=2, .y[0]=3 };"));
+        ASSERT_NO_THROW(tokenizeAndStringify("S s = { .ab.a=2, .ab.b=3 };"));
     }
 
 
@@ -7834,6 +7846,19 @@ private:
         ASSERT_NO_THROW(tokenizeAndStringify("namespace x { namespace y { namespace z {}}}"))
     }
 
+    void checkLambdas() {
+        ASSERT_NO_THROW(tokenizeAndStringify("auto f(int& i) { return [=, &i] {}; }"))
+        ASSERT_NO_THROW(tokenizeAndStringify("auto f(int& i) { return [&, i] {}; }"))
+        ASSERT_NO_THROW(tokenizeAndStringify("auto f(int& i) { return [&, i = std::move(i)] {}; }"))
+        ASSERT_NO_THROW(tokenizeAndStringify("auto f(int& i) { return [=, i = std::move(i)] {}; }"))
+        ASSERT_NO_THROW(tokenizeAndStringify("struct c {\n"
+                                             "  void d() {\n"
+                                             "    int a;\n"
+                                             "    auto b = [this, a] {};\n"
+                                             "  }\n"
+                                             "};\n"))
+    }
+
     void noCrash1() {
         ASSERT_NO_THROW(tokenizeAndStringify(
                             "struct A {\n"
@@ -7897,6 +7922,10 @@ private:
         tokenizer.printUnknownTypes();
 
         ASSERT_EQUALS("", errout.str());
+    }
+
+    void unknownMacroBeforeReturn() {
+        ASSERT_THROW(tokenizeAndStringify("int f() { X return 0; }"), InternalError);
     }
 };
 
