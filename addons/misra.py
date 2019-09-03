@@ -2467,6 +2467,58 @@ def get_args():
     parser.add_argument("--cli", help="Addon is executed from Cppcheck", action="store_true")
     return parser.parse_args()
 
+def JUnit_xml(checker):
+    import xml.etree.ElementTree as ET
+    import xml.dom.minidom as MD
+
+    # create the file structure
+    testsuites = ET.Element('testsuites')
+    testsuites.set("id", "misra-c2012")
+    
+    #Lookup the total number of violations
+    totalViolations = 0
+    for viol in checker.get_violation_types():
+        totalViolations += len(checker.get_violations(viol))
+    
+    testsuite = ET.SubElement(testsuites, 'testsuite')
+    testsuite.set("id", "MISRA")
+    testsuite.set("failures", str(totalViolations) )
+
+    rules_violated = {}
+    for severity, ids in checker.get_violations():
+        for misra_id in ids:
+            rules_violated[misra_id] = rules_violated.get(misra_id, 0) + 1
+    convert = lambda text: int(text) if text.isdigit() else text
+    misra_sort = lambda key: [ convert(c) for c in re.split('[\.-]([0-9]*)', key) ]
+    for misra_id in sorted(rules_violated.keys(), key=misra_sort):
+        testcase = ET.SubElement(testsuite, 'testcase')
+        testcase.set("id", str(misra_id))
+        testcase.set("failures", str(rules_violated[misra_id]) )
+        
+        res = re.split('[\.-]([0-9]*)', misra_id)
+        
+        if res is None:
+            num = 0
+        else:
+            num = int(res[3]) * 100 + int(res[5])
+        
+        #if num > 0:
+        if False:
+            for viol in checker.get_violations(num):
+                failure = ET.SubElement(testcase, 'failure')
+                #failure.text = "\t%15s (%s): %d" % (misra_id, severity, rules_violated[misra_id])
+                #failure.text = str(viol)
+                if num in checker.ruleTexts:
+                    failure.text = checker.ruleTexts[num]
+
+    # create a new XML file with the results
+    xmldata = ET.tostring(testsuites, encoding="us-ascii", method="xml")
+    xmlpretty = MD.parseString(xmldata).toprettyxml(indent="\t")
+    #xmlData = etree.tostring(testsuites, pretty_print=True).decode()
+    myfile = open("misra.xml", "w")
+    #myfile.write(xmldata)
+    myfile.write(xmlpretty)
+
 
 def main():
     args = get_args()
@@ -2554,6 +2606,7 @@ def main():
         if args.show_suppressed_rules:
             checker.showSuppressedRules()
 
+        JUnit_xml(checker)
         sys.exit(exitCode)
 
 
