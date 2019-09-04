@@ -2482,6 +2482,8 @@ def JUnit_xml(checker):
     
     testsuite = ET.SubElement(testsuites, 'testsuite')
     testsuite.set("id", "MISRA")
+    testsuite.set("name", "MISRA C:2012")
+    testsuite.set("tests", "143")
     testsuite.set("failures", str(totalViolations) )
 
     rules_violated = {}
@@ -2493,7 +2495,14 @@ def JUnit_xml(checker):
     for misra_id in sorted(rules_violated.keys(), key=misra_sort):
         testcase = ET.SubElement(testsuite, 'testcase')
         testcase.set("id", str(misra_id))
+        testcase.set("name", str(misra_id))
         testcase.set("failures", str(rules_violated[misra_id]) )
+        
+        for fail in range(rules_violated[misra_id]):
+            failure = ET.SubElement(testcase, 'failure')
+            failure.text = str(misra_id)
+            failure.set("type", "MANDATORY")
+            failure.set("message", str(misra_id))
         
         res = re.split('[\.-]([0-9]*)', misra_id)
         
