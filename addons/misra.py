@@ -2493,12 +2493,11 @@ def JUnit_xml(checker):
     convert = lambda text: int(text) if text.isdigit() else text
     misra_sort = lambda key: [ convert(c) for c in re.split('[\.-]([0-9]*)', key) ]
     for misra_id in sorted(rules_violated.keys(), key=misra_sort):
-        testcase = ET.SubElement(testsuite, 'testcase')
-        testcase.set("id", str(misra_id))
-        testcase.set("name", str(misra_id))
-        testcase.set("failures", str(rules_violated[misra_id]) )
-        
         for fail in range(rules_violated[misra_id]):
+            testcase = ET.SubElement(testsuite, 'testcase')
+            testcase.set("id", str(misra_id))
+            testcase.set("name", str(misra_id))
+            
             failure = ET.SubElement(testcase, 'failure')
             failure.text = str(misra_id)
             failure.set("type", "MANDATORY")
